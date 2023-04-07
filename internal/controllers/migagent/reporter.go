@@ -54,6 +54,7 @@ func NewReporter(client client.Client, migClient mig.Client, sharedState *Shared
 func (r *MigReporter) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := klog.FromContext(ctx).WithName("Reporter")
 
+	logger.V(3).Info("mig reporter begin")
 	r.sharedState.Lock()
 	defer r.sharedState.Unlock()
 	defer r.sharedState.OnReportDone()

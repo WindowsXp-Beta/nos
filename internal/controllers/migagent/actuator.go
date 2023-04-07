@@ -77,6 +77,8 @@ func (a *MigActuator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 	}
 
+	logger.V(3).Info("migActuator begin")
+
 	a.sharedState.Lock()
 	defer a.sharedState.Unlock()
 
@@ -98,6 +100,7 @@ func (a *MigActuator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 
 	// Compute MIG config plan
 	configPlan, err := a.plan(ctx, specAnnotations)
+	logger.V(3).Info("MIG config plan computed")
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -119,6 +122,7 @@ func (a *MigActuator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 	res, err := a.apply(ctx, configPlan)
 	a.sharedState.OnApplyDone()
 
+	logger.V(3).Info("plan applied")
 	return res, err
 }
 

@@ -33,6 +33,8 @@ spec:
       containers:
         - command:
             - /gpupartitioner
+            - -zap-log-level
+            - '3'
           image: gpu-partitioner:latest
           name: gpu-partitioner
           securityContext:
