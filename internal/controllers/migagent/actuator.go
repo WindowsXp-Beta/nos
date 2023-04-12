@@ -97,7 +97,7 @@ func (a *MigActuator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 		logger.Info("reported status matches desired MIG config, nothing to do")
 		return ctrl.Result{}, nil
 	}
-
+	logger.V(3).Info("begin plan MIG config")
 	// Compute MIG config plan
 	configPlan, err := a.plan(ctx, specAnnotations)
 	logger.V(3).Info("MIG config plan computed")
@@ -140,6 +140,7 @@ func (a *MigActuator) plan(ctx context.Context, specAnnotations gpu.SpecAnnotati
 		logger.Error(err, "unable to get MIG device resources")
 		return plan.MigConfigPlan{}, a.restartNvidiaDevicePlugin(ctx)
 	}
+	logger.V(3).Info("finish getting mig Devices")
 
 	state := plan.NewMigState(migDeviceResources)
 
@@ -177,7 +178,7 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan) (ctrl.
 			restartRequired = true
 		}
 	}
-
+	logger.V(3).Info("finish applying delete operations")
 	// Apply create operations
 	status := a.applyCreateOps(ctx, plan.CreateOperations)
 	if status.Err != nil {
@@ -187,7 +188,7 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan) (ctrl.
 	if status.PluginRestartRequired {
 		restartRequired = true
 	}
-
+	logger.V(3).Info("finish applying create operations")
 	// Restart the NVIDIA device plugin if necessary
 	if restartRequired {
 		if err := a.restartNvidiaDevicePlugin(ctx); err != nil {
