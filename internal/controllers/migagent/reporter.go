@@ -68,8 +68,10 @@ func (r *MigReporter) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 	migResources, err := r.migClient.GetMigDevices(ctx)
 	if err != nil {
 		logger.Error(err, "unable to get MIG device resources")
+		// FIXME(wxp): we should let migAgent be aware of this
 		return ctrl.Result{}, err
 	}
+	r.sharedState.UpdateDevices(migResources)
 	usedMigs := migResources.GetUsed()
 	freeMigs := migResources.GetFree()
 	logger.V(3).Info("loaded free MIG devices", "freeMIGs", freeMigs)

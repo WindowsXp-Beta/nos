@@ -16,7 +16,11 @@
 
 package migagent
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/nebuly-ai/nos/pkg/gpu"
+)
 
 type empty struct{}
 
@@ -25,12 +29,17 @@ type SharedState struct {
 	sync.Mutex
 	lastParsedPlanId string
 	reportsChan      chan empty
+	migDeviceResources gpu.DeviceList
 }
 
 func NewSharedState() *SharedState {
 	return &SharedState{
 		reportsChan: make(chan empty, 1),
 	}
+}
+
+func (s *SharedState) UpdateDevices(migDeviceResources gpu.DeviceList) {
+	s.migDeviceResources = migDeviceResources
 }
 
 func (s *SharedState) OnReportDone() {

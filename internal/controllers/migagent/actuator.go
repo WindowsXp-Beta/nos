@@ -130,16 +130,17 @@ func (a *MigActuator) plan(ctx context.Context, specAnnotations gpu.SpecAnnotati
 	logger := a.newLogger(ctx)
 
 	// Compute current state
-	migDeviceResources, err := a.migClient.GetMigDevices(ctx)
-	if gpu.IgnoreNotFound(err) != nil {
-		logger.Error(err, "unable to get MIG device resources")
-		return plan.MigConfigPlan{}, err
-	}
-	// If err is not found, restart the NVIDIA device plugin for updating the resources exposed to k8s
-	if gpu.IsNotFound(err) {
-		logger.Error(err, "unable to get MIG device resources")
-		return plan.MigConfigPlan{}, a.restartNvidiaDevicePlugin(ctx)
-	}
+	migDeviceResources := a.sharedState.migDeviceResources
+	// migDeviceResources, err := a.migClient.GetMigDevices(ctx)
+	// if gpu.IgnoreNotFound(err) != nil {
+	// 	logger.Error(err, "unable to get MIG device resources")
+	// 	return plan.MigConfigPlan{}, err
+	// }
+	// // If err is not found, restart the NVIDIA device plugin for updating the resources exposed to k8s
+	// if gpu.IsNotFound(err) {
+	// 	logger.Error(err, "unable to get MIG device resources")
+	// 	return plan.MigConfigPlan{}, a.restartNvidiaDevicePlugin(ctx)
+	// }
 	logger.V(3).Info("finish getting mig Devices")
 
 	state := plan.NewMigState(migDeviceResources)
