@@ -38,7 +38,7 @@ var (
 type Error interface {
 	error
 	IsNotFound() bool
-	IsInsuffcient() bool
+	IsInsufficient() bool
 }
 
 type ErrorList []Error
@@ -68,7 +68,7 @@ func (e errorImpl) IsNotFound() bool {
 	return e.code == errorCodeNotFound
 }
 
-func (e errorImpl) IsInsuffcient() bool {
+func (e errorImpl) IsInsufficient() bool {
 	return e.code == errorCodeInsufficientResource
 }
 

@@ -71,7 +71,7 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 		var err gpu.Error
 		for i := 0; i < 3; i++ {
 			err = c.nvmlClient.CreateMigDevices(profileNames, gpuIndex)
-			if err.IsInsuffcient() {
+			if err != nil && err.IsInsufficient() {
 				for j := 0; j < 3; j++ {
 					logger.V(1).Info("We may encounter the mig constraint", "tried creation times", i, "tried cleanning times", j)
 					// 1. get running pods
@@ -94,6 +94,9 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 					// 4. delete used devices
 					isErrorInDeletion := false
 					for _, migDevice := range used {
+						if migDevice.GpuIndex != gpuIndex {
+							continue
+						}
 						if err := c.DeleteMigDevice(ctx, migDevice); err != nil {
 							logger.Error(err, "Error when deleting mig instance in mig creation retrying", "mig instance", migDevice.DeviceId)
 							isErrorInDeletion = true
@@ -117,9 +120,15 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 					}
 				}
 			} else {
-				errors = append(errors, err)
-				continue
+				break
 			}
+		}
+		if err != nil {
+			if err.IsInsufficient() {
+				logger.V(1).Info("still insufficient", "gpuIndex", gpuIndex, "profileList", profileList)
+			}
+			errors = append(errors, nil)
+			continue
 		}
 		createdProfiles = append(createdProfiles, profiles...)
 	}
