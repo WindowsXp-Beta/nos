@@ -26,16 +26,19 @@ type errorCode string
 const (
 	errorCodeNotFound = "resource-not-found"
 	errorCodeGeneric  = "generic"
+	errorCodeInsufficientResource = "insufficientResource"
 )
 
 var (
 	NotFoundErr = errorImpl{code: errorCodeNotFound}
 	GenericErr  = errorImpl{code: errorCodeGeneric}
+	InsufficientResourceErr = errorImpl{code: errorCodeInsufficientResource}
 )
 
 type Error interface {
 	error
 	IsNotFound() bool
+	IsInsuffcient() bool
 }
 
 type ErrorList []Error
@@ -63,6 +66,10 @@ func (e errorImpl) Error() string {
 
 func (e errorImpl) IsNotFound() bool {
 	return e.code == errorCodeNotFound
+}
+
+func (e errorImpl) IsInsuffcient() bool {
+	return e.code == errorCodeInsufficientResource
 }
 
 func (e errorImpl) Errorf(format string, args ...any) Error {

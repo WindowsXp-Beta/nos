@@ -116,7 +116,7 @@ func (a *MigActuator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Res
 	}
 
 	// Apply MIG config plan
-	res, err := a.apply(ctx, configPlan)
+	res, err := a.apply(ctx, configPlan, instance.Name)
 	a.sharedState.OnApplyDone()
 
 	return res, err
@@ -149,7 +149,7 @@ func (a *MigActuator) plan(ctx context.Context, specAnnotations gpu.SpecAnnotati
 	return plan.NewMigConfigPlan(state, specAnnotations), nil
 }
 
-func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan) (ctrl.Result, error) {
+func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan, nodeName string) (ctrl.Result, error) {
 	logger := a.newLogger(ctx)
 	logger.Info(
 		"applying MIG config plan",
@@ -175,7 +175,7 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan) (ctrl.
 	}
 
 	// Apply create operations
-	status := a.applyCreateOps(ctx, plan.CreateOperations)
+	status := a.applyCreateOps(ctx, plan.CreateOperations, nodeName)
 	if status.Err != nil {
 		logger.Error(status.Err, "unable to fulfill create operations")
 		atLeastOneErr = true
@@ -253,12 +253,12 @@ func (a *MigActuator) applyDeleteOp(ctx context.Context, op plan.DeleteOperation
 	}
 }
 
-func (a *MigActuator) applyCreateOps(ctx context.Context, ops plan.CreateOperationList) plan.OperationStatus {
+func (a *MigActuator) applyCreateOps(ctx context.Context, ops plan.CreateOperationList, nodeName string) plan.OperationStatus {
 	logger := a.newLogger(ctx)
 	logger.Info("applying create operations", "migProfiles", ops)
 
 	profileList := ops.Flatten()
-	created, err := a.migClient.CreateMigDevices(ctx, profileList)
+	created, err := a.migClient.CreateMigDevices(ctx, profileList, &a.Client, nodeName)
 	if err != nil {
 		nCreated := len(created)
 		return plan.OperationStatus{

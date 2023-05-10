@@ -286,6 +286,7 @@ func (c *clientImpl) CreateMigDevices(migProfileNames []string, gpuIndex int) gp
 	// Iterate permutations until success
 	// (MIG profile creation success depends on the order on which they are created)
 	var anyPermutationApplied bool
+	var ifEncounterInsufficient bool
 	var nAttempts int
 	var maxAttempts = 20
 	err = util.IterPermutations(mps, func(mps []nvlibdevice.MigProfile) (bool, error) {
@@ -295,6 +296,7 @@ func (c *clientImpl) CreateMigDevices(migProfileNames []string, gpuIndex int) gp
 		}
 		c.logger.V(1).Info("trying to create MIG profiles", "permutation", mps)
 		nAttempts++
+		ifEncounterInsufficient = false
 		createdGIs := make([]nvlibNvml.GpuInstance, 0)
 		createdCIs := make([]nvlibNvml.ComputeInstance, 0)
 		for _, mp := range mps {
@@ -306,9 +308,16 @@ func (c *clientImpl) CreateMigDevices(migProfileNames []string, gpuIndex int) gp
 			gi, ret := device.CreateGpuInstance(&giProfileInfo)
 			if ret != nvlibNvml.SUCCESS {
 				c.logger.V(1).Info("could not create GPU instance", "error", ret.Error())
+				if ret == nvlibNvml.ERROR_INSUFFICIENT_RESOURCES {
+					ifEncounterInsufficient = true
+				}
 				return true, cleanup(createdGIs, createdCIs)
 			}
-			c.logger.V(1).Info("created GPU Instance", "GpuInstanceID", mp.GetInfo().GIProfileID)
+			gpuInstanceInfo, ret := gi.GetInfo()
+			if ret != nvlibNvml.SUCCESS {
+				c.logger.V(1).Info("could not get GPU instance Info", "error", ret.Error())
+			}
+			c.logger.V(1).Info("created GPU Instance", "GpuInstanceID", mp.GetInfo().GIProfileID, "GpuInstancePlacement", gpuInstanceInfo.Placement)
 			createdGIs = append(createdGIs, gi)
 
 			// Create Compute Instance
@@ -334,7 +343,11 @@ func (c *clientImpl) CreateMigDevices(migProfileNames []string, gpuIndex int) gp
 		return gpu.GenericErr.Errorf("error while applying permutations: %s", err)
 	}
 	if !anyPermutationApplied {
-		return gpu.GenericErr.Errorf("could not create MIG profiles: could not find any valid permutation")
+		if ifEncounterInsufficient {
+			return gpu.InsufficientResourceErr
+		} else {
+			return gpu.GenericErr.Errorf("could not create MIG profiles: could not find any valid permutation")
+		}
 	}
 	return nil
 }

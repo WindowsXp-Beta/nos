@@ -93,6 +93,11 @@ func (c *Controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := c.Get(ctx, client.ObjectKey{Name: req.Name, Namespace: req.Namespace}, &instance); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	// omit pods having label
+	if _, exist := instance.Labels[constant.PodRestartLabel]; exist {
+		logger.V(1).Info("Omit pod restarted by MigActuator", "Pod", instance)
+		return ctrl.Result{}, nil
+	}
 	var namespacedName = util.GetNamespacedName(&instance).String()
 
 	// Add pod to current batch only if it is pending and adding extra resources could make it schedulable

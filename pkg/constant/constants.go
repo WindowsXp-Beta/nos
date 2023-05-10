@@ -109,4 +109,5 @@ const (
 const (
 	PodPhaseKey    = "status.phase"
 	PodNodeNameKey = "spec.nodeName"
+	PodRestartLabel = "RestartByMigActuator"
 )
