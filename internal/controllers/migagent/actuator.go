@@ -19,9 +19,12 @@ package migagent
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/nebuly-ai/nos/internal/controllers/migagent/plan"
 	"github.com/nebuly-ai/nos/pkg/api/nos.nebuly.com/v1alpha1"
+	"github.com/nebuly-ai/nos/pkg/constant"
 	"github.com/nebuly-ai/nos/pkg/gpu"
 	"github.com/nebuly-ai/nos/pkg/gpu/mig"
 	"github.com/nebuly-ai/nos/pkg/util/predicate"
@@ -30,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"time"
 )
 
 type MigActuator struct {
@@ -175,7 +177,7 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan, nodeNa
 	}
 
 	// Apply create operations
-	status := a.applyCreateOps(ctx, plan.CreateOperations, nodeName)
+	podList, status := a.applyCreateOps(ctx, plan.CreateOperations, nodeName)
 	if status.Err != nil {
 		logger.Error(status.Err, "unable to fulfill create operations")
 		atLeastOneErr = true
@@ -192,6 +194,21 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan, nodeNa
 		}
 	}
 
+	if len(podList.Items) != 0 {
+		// 5. restart deleted pods
+		logger.V(1).Info("restart pods", "pods", podList)
+		for _, pod := range podList.Items {
+			if pod.Labels == nil {
+				pod.Labels = make(map[string]string)
+			}
+			pod.ResourceVersion = ""
+			pod.Labels[constant.PodRestartLabel] = "true"
+			if err := a.Client.Create(ctx, &pod); err != nil {
+				logger.Error(err, fmt.Sprintf("Error when restarting pods on %v", nodeName), "pod", pod)
+				atLeastOneErr = true
+			}
+		}
+	}
 	// Check if any error happened
 	if atLeastOneErr {
 		return ctrl.Result{}, fmt.Errorf("at least one operation failed while applying desired MIG config")
@@ -253,15 +270,15 @@ func (a *MigActuator) applyDeleteOp(ctx context.Context, op plan.DeleteOperation
 	}
 }
 
-func (a *MigActuator) applyCreateOps(ctx context.Context, ops plan.CreateOperationList, nodeName string) plan.OperationStatus {
+func (a *MigActuator) applyCreateOps(ctx context.Context, ops plan.CreateOperationList, nodeName string) (v1.PodList, plan.OperationStatus) {
 	logger := a.newLogger(ctx)
 	logger.Info("applying create operations", "migProfiles", ops)
 
 	profileList := ops.Flatten()
-	created, err := a.migClient.CreateMigDevices(ctx, profileList, &a.Client, nodeName)
+	created, podList, err := a.migClient.CreateMigDevices(ctx, profileList, &a.Client, nodeName)
 	if err != nil {
 		nCreated := len(created)
-		return plan.OperationStatus{
+		return podList, plan.OperationStatus{
 			PluginRestartRequired: nCreated > 0,
 			Err: fmt.Errorf(
 				"could create only %d out of %d MIG resources: %s",
@@ -271,7 +288,7 @@ func (a *MigActuator) applyCreateOps(ctx context.Context, ops plan.CreateOperati
 			),
 		}
 	}
-	return plan.OperationStatus{
+	return podList, plan.OperationStatus{
 		PluginRestartRequired: true,
 		Err:                   nil,
 	}

@@ -18,7 +18,6 @@ package mig
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/nebuly-ai/nos/pkg/constant"
@@ -36,7 +35,7 @@ type Client interface {
 	GetMigDevices(ctx context.Context) (gpu.DeviceList, gpu.Error)
 	GetUsedMigDevices(ctx context.Context) (gpu.DeviceList, gpu.Error)
 	GetAllocatableMigDevices(ctx context.Context) (gpu.DeviceList, gpu.Error)
-	CreateMigDevices(ctx context.Context, profileList ProfileList, client *client.Client, nodeName string) (ProfileList, error)
+	CreateMigDevices(ctx context.Context, profileList ProfileList, client *client.Client, nodeName string) (ProfileList, v1.PodList, error)
 	DeleteMigDevice(ctx context.Context, device gpu.Device) gpu.Error
 	DeleteAllExcept(ctx context.Context, resources gpu.DeviceList) error
 }
@@ -60,10 +59,11 @@ func NewClient(resourceClient resource.Client, nvmlClient nvml.Client) Client {
 // CreateMigResources still tries to create the resources on the other GPUs and returns the ones that
 // it possible to create. This means that if any error happens, the returned ProfileList will be a subset
 // of the input list, otherwise the two lists will have the same length and items.
-func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileList, cli *client.Client, nodeName string) (ProfileList, error) {
+func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileList, cli *client.Client, nodeName string) (ProfileList, v1.PodList, error) {
 	logger := log.FromContext(ctx)
 	var errors = make(gpu.ErrorList, 0)
 	var createdProfiles = make(ProfileList, 0)
+	var podList v1.PodList
 	for gpuIndex, profiles := range profileList.GroupByGPU() {
 		profileNames := make([]string, 0)
 		for _, p := range profiles {
@@ -76,7 +76,6 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 				for j := 0; j < 3; j++ {
 					logger.V(1).Info("We may encounter the mig constraint", "tried creation times", i, "tried cleanning times", j)
 					// 1. get running pods
-					var podList v1.PodList
 					var getPodErr error
 					if getPodErr = (*cli).List(ctx, &podList, client.InNamespace("default"), client.MatchingFields{constant.PodNodeNameKey: nodeName}); getPodErr != nil {
 						logger.Error(getPodErr, "Error when retrieving pods in mig creation retrying")
@@ -128,18 +127,7 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 					}
 					if isErrorInDeletion {
 						continue
-					}
-					// 5. restart deleted pods
-					isErrorInRestarting := false
-					for _, pod := range podList.Items {
-						pod.Labels[constant.PodRestartLabel] = "true"
-						if err := (*cli).Create(ctx, &pod); err != nil {
-							logger.Error(err, fmt.Sprintf("Error when restarting pods on %v", nodeName), "pod", pod)
-							isErrorInRestarting = true
-						}
-					}
-					if !isErrorInRestarting {
-						logger.V(1).Info(fmt.Sprintf("finish cleaning mig instances on %v", nodeName))
+					} else {
 						break
 					}
 				}
@@ -157,9 +145,9 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 		createdProfiles = append(createdProfiles, profiles...)
 	}
 	if len(errors) > 0 {
-		return createdProfiles, errors
+		return createdProfiles, podList, errors
 	}
-	return createdProfiles, nil
+	return createdProfiles, podList, nil
 }
 
 func (c clientImpl) DeleteMigDevice(_ context.Context, resource gpu.Device) gpu.Error {
