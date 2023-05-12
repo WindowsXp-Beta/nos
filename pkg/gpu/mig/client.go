@@ -19,6 +19,7 @@ package mig
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/nebuly-ai/nos/pkg/constant"
 	"github.com/nebuly-ai/nos/pkg/gpu"
@@ -76,11 +77,12 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 					logger.V(1).Info("We may encounter the mig constraint", "tried creation times", i, "tried cleanning times", j)
 					// 1. get running pods
 					var podList v1.PodList
-					// TODO(wxp): if we need to specify namespace
-					if getPodErr := (*cli).List(ctx, &podList, client.MatchingFields{constant.PodNodeNameKey: nodeName}); getPodErr != nil {
+					var getPodErr error
+					if getPodErr = (*cli).List(ctx, &podList, client.InNamespace("default"), client.MatchingFields{constant.PodNodeNameKey: nodeName}); getPodErr != nil {
 						logger.Error(getPodErr, "Error when retrieving pods in mig creation retrying")
 						continue
 					}
+					logger.V(1).Info("finished retrieving all pods", "pod list", podList)
 					// 2. get used devices
 					used, err := c.GetUsedMigDevices(ctx)
 					if err != nil {
@@ -88,8 +90,30 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 						continue
 					}
 					// 3. delete running pods
-					if deletePodErr := (*cli).DeleteAllOf(ctx, &v1.Pod{}, client.MatchingFields{constant.PodNodeNameKey: nodeName}); deletePodErr != nil {
-						logger.Error(deletePodErr, fmt.Sprintf("Error when deleting pods running on %v", nodeName))
+					for _, pod := range podList.Items {
+						if pod.DeletionTimestamp == nil {
+							if err := (*cli).Delete(ctx, &pod); err != nil {
+								logger.Error(err, "Error when deleting pod", "pod", pod.Name)
+							}
+						}
+					}
+					// 3.5 ensure all the pods are deleted
+					for {
+						var tmpPodList v1.PodList
+						if getPodErr = (*cli).List(ctx, &tmpPodList, client.InNamespace("default"), client.MatchingFields{constant.PodNodeNameKey: nodeName}); getPodErr != nil {
+							logger.Error(getPodErr, "Error when checking if all pods are deleted")
+							break
+						} else {
+							if len(tmpPodList.Items) != 0 {
+								logger.V(1).Info("there are still pods existed", "pods", tmpPodList.Items)
+								time.Sleep(5 * time.Second)
+							} else {
+								break
+							}
+						}
+					}
+					if getPodErr != nil {
+						continue
 					}
 					// 4. delete used devices
 					isErrorInDeletion := false
