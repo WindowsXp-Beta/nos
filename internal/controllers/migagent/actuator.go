@@ -196,7 +196,13 @@ func (a *MigActuator) apply(ctx context.Context, plan plan.MigConfigPlan, nodeNa
 
 	if len(podList.Items) != 0 {
 		// 5. restart deleted pods
-		logger.V(1).Info("restart pods", "pods", podList)
+		logger.V(1).Info("restart pods", "pods", func(podList v1.PodList) []string {
+			ret := make([]string, len(podList.Items))
+			for i, pod := range podList.Items {
+				ret[i] = pod.Name
+			}
+			return ret
+		}(podList))
 		for _, pod := range podList.Items {
 			if pod.Labels == nil {
 				pod.Labels = make(map[string]string)

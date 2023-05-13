@@ -70,6 +70,7 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 			profileNames = append(profileNames, p.Name.String())
 		}
 		var err gpu.Error
+		isProfileNamesUpdated := false
 		for i := 0; i < 3; i++ {
 			err = c.nvmlClient.CreateMigDevices(profileNames, gpuIndex)
 			if err != nil && err.IsInsufficient() {
@@ -81,7 +82,6 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 						logger.Error(getPodErr, "Error when retrieving pods in mig creation retrying")
 						continue
 					}
-					logger.V(1).Info("finished retrieving all pods", "pod list", podList)
 					// 2. get used devices
 					used, err := c.GetUsedMigDevices(ctx)
 					if err != nil {
@@ -104,7 +104,7 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 							break
 						} else {
 							if len(tmpPodList.Items) != 0 {
-								logger.V(1).Info("there are still pods existed", "pods", tmpPodList.Items)
+								logger.V(1).Info("there are still pods existed")
 								time.Sleep(5 * time.Second)
 							} else {
 								break
@@ -128,6 +128,13 @@ func (c clientImpl) CreateMigDevices(ctx context.Context, profileList ProfileLis
 					if isErrorInDeletion {
 						continue
 					} else {
+						if !isProfileNamesUpdated {
+							for _, migDevice := range used {
+								name, _ := ExtractProfileNameStr(migDevice.ResourceName) // TODO: we may need to handle this error
+								profileNames = append(profileNames, name)
+							}
+							isProfileNamesUpdated = true
+						}
 						break
 					}
 				}
